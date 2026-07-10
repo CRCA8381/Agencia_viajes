@@ -1,0 +1,95 @@
+@page "/paquetes"
+@inject ApiService Api
+@inject IJSRuntime JS
+
+<PageTitle>Paquetes</PageTitle>
+
+<section class="card">
+  <div class="section-header">
+    <div><h1>Paquetes turísticos</h1><p>Administra precios, duración y destino.</p></div>
+    <span class="badge">@items.Count registros</span>
+  </div>
+
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="message">@message</div> }
+
+  <EditForm Model="model" OnValidSubmit="SaveAsync" FormName="paqueteForm">
+    <DataAnnotationsValidator />
+    <div class="form-grid">
+      <div>
+        <label>Destino</label>
+        <InputSelect @bind-Value="model.DestinoId">
+          <option value="0">Seleccione...</option>
+          @foreach (var d in destinos) { <option value="@d.DestinoId">@d.Ciudad, @d.Pais</option> }
+        </InputSelect>
+        <ValidationMessage For="() => model.DestinoId" />
+      </div>
+      <div><label>Nombre</label><InputText @bind-Value="model.Nombre" /><ValidationMessage For="() => model.Nombre" /></div>
+      <div><label>Precio</label><InputNumber @bind-Value="model.Precio" /><ValidationMessage For="() => model.Precio" /></div>
+      <div><label>Duración (días)</label><InputNumber @bind-Value="model.Duracion" /><ValidationMessage For="() => model.Duracion" /></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit" disabled="@saving">@(editing ? "Actualizar" : "Guardar")</button>
+      <button class="btn secondary" type="button" @onclick="Reset">@(editing ? "Cancelar edición" : "Limpiar")</button>
+    </div>
+  </EditForm>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Destino</th><th>Precio</th><th>Duración</th><th>Acciones</th></tr></thead>
+      <tbody>
+      @foreach (var item in items)
+      {
+        <tr>
+          <td>@item.PaqueteId</td><td>@item.Nombre</td><td>@item.DestinoNombre</td><td>$@item.Precio.ToString("N2")</td><td>@item.Duracion días</td>
+          <td class="row-actions">
+            <button class="btn edit" @onclick="() => Edit(item)">Editar</button>
+            <button class="btn danger" @onclick="() => DeleteAsync(item)">Eliminar</button>
+          </td>
+        </tr>
+      }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+@code {
+  private List<PaqueteDto> items = [];
+  private List<DestinoDto> destinos = [];
+  private PaqueteDto model = new();
+  private bool editing, saving;
+  private string message = "";
+
+  protected override async Task OnInitializedAsync()
+  {
+    destinos = await Api.GetDestinosAsync() ?? [];
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync() => items = await Api.GetPaquetesAsync() ?? [];
+
+  private async Task SaveAsync()
+  {
+    saving = true;
+    var response = editing ? await Api.UpdatePaqueteAsync(model) : await Api.CreatePaqueteAsync(model);
+    message = response.IsSuccessStatusCode ? (editing ? "Paquete actualizado." : "Paquete creado.")
+      : await ApiService.ErrorAsync(response, "No fue posible guardar.");
+    saving = false;
+    if (response.IsSuccessStatusCode) { Reset(); await LoadAsync(); }
+  }
+
+  private void Edit(PaqueteDto x)
+  {
+    model = new() { PaqueteId=x.PaqueteId, DestinoId=x.DestinoId, Nombre=x.Nombre, Precio=x.Precio, Duracion=x.Duracion };
+    editing = true;
+  }
+
+  private async Task DeleteAsync(PaqueteDto x)
+  {
+    if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar {x.Nombre}?")) return;
+    var response = await Api.DeletePaqueteAsync(x.PaqueteId);
+    message = response.IsSuccessStatusCode ? "Paquete eliminado." : await ApiService.ErrorAsync(response, "No fue posible eliminar.");
+    if (response.IsSuccessStatusCode) await LoadAsync();
+  }
+
+  private void Reset() { model = new(); editing = false; }
+}

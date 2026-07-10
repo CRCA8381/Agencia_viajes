@@ -1,0 +1,83 @@
+@page "/destinos"
+@inject ApiService Api
+@inject IJSRuntime JS
+
+<PageTitle>Destinos</PageTitle>
+
+<section class="card">
+  <div class="section-header">
+    <div><h1>Destinos</h1><p>Administra los lugares disponibles.</p></div>
+    <span class="badge">@items.Count registros</span>
+  </div>
+
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="message">@message</div> }
+
+  <EditForm Model="model" OnValidSubmit="SaveAsync" FormName="destinoForm">
+    <DataAnnotationsValidator />
+    <div class="form-grid">
+      <div><label>País</label><InputText @bind-Value="model.Pais" /><ValidationMessage For="() => model.Pais" /></div>
+      <div><label>Ciudad</label><InputText @bind-Value="model.Ciudad" /><ValidationMessage For="() => model.Ciudad" /></div>
+      <div class="full"><label>Descripción</label><InputTextArea @bind-Value="model.Descripcion" /><ValidationMessage For="() => model.Descripcion" /></div>
+      <div><label>Temporada</label><InputText @bind-Value="model.Temporada" /><ValidationMessage For="() => model.Temporada" /></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit" disabled="@saving">@(editing ? "Actualizar" : "Guardar")</button>
+      <button class="btn secondary" type="button" @onclick="Reset">@(editing ? "Cancelar edición" : "Limpiar")</button>
+    </div>
+  </EditForm>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>País</th><th>Ciudad</th><th>Temporada</th><th>Descripción</th><th>Acciones</th></tr></thead>
+      <tbody>
+      @foreach (var item in items)
+      {
+        <tr>
+          <td>@item.DestinoId</td><td>@item.Pais</td><td>@item.Ciudad</td><td>@item.Temporada</td><td>@item.Descripcion</td>
+          <td class="row-actions">
+            <button class="btn edit" @onclick="() => Edit(item)">Editar</button>
+            <button class="btn danger" @onclick="() => DeleteAsync(item)">Eliminar</button>
+          </td>
+        </tr>
+      }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+@code {
+  private List<DestinoDto> items = [];
+  private DestinoDto model = new();
+  private bool editing, saving;
+  private string message = "";
+
+  protected override async Task OnInitializedAsync() => await LoadAsync();
+  private async Task LoadAsync() => items = await Api.GetDestinosAsync() ?? [];
+
+  private async Task SaveAsync()
+  {
+    saving = true;
+    var response = editing ? await Api.UpdateDestinoAsync(model) : await Api.CreateDestinoAsync(model);
+    message = response.IsSuccessStatusCode
+      ? (editing ? "Destino actualizado correctamente." : "Destino creado correctamente.")
+      : await ApiService.ErrorAsync(response, "No fue posible guardar el destino.");
+    saving = false;
+    if (response.IsSuccessStatusCode) { Reset(); await LoadAsync(); }
+  }
+
+  private void Edit(DestinoDto x)
+  {
+    model = new() { DestinoId=x.DestinoId, Pais=x.Pais, Ciudad=x.Ciudad, Descripcion=x.Descripcion, Temporada=x.Temporada };
+    editing = true;
+  }
+
+  private async Task DeleteAsync(DestinoDto x)
+  {
+    if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar {x.Ciudad}, {x.Pais}?")) return;
+    var response = await Api.DeleteDestinoAsync(x.DestinoId);
+    message = response.IsSuccessStatusCode ? "Destino eliminado." : await ApiService.ErrorAsync(response, "No fue posible eliminar.");
+    if (response.IsSuccessStatusCode) await LoadAsync();
+  }
+
+  private void Reset() { model = new(); editing = false; }
+}

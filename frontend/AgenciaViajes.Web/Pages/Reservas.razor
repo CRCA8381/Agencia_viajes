@@ -1,0 +1,111 @@
+@page "/reservas"
+@inject ApiService Api
+@inject IJSRuntime JS
+
+<PageTitle>Reservas</PageTitle>
+
+<section class="card">
+  <div class="section-header">
+    <div><h1>Reservas</h1><p>Gestiona la contratación de paquetes turísticos.</p></div>
+    <span class="badge">@items.Count registros</span>
+  </div>
+
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="message">@message</div> }
+
+  <EditForm Model="model" OnValidSubmit="SaveAsync" FormName="reservaForm">
+    <DataAnnotationsValidator />
+    <div class="form-grid">
+      <div>
+        <label>Cliente</label>
+        <InputSelect @bind-Value="model.ClienteId">
+          <option value="0">Seleccione...</option>
+          @foreach (var c in clientes) { <option value="@c.ClienteId">@c.Nombre</option> }
+        </InputSelect>
+        <ValidationMessage For="() => model.ClienteId" />
+      </div>
+      <div>
+        <label>Paquete</label>
+        <InputSelect @bind-Value="model.PaqueteId">
+          <option value="0">Seleccione...</option>
+          @foreach (var p in paquetes) { <option value="@p.PaqueteId">@p.Nombre</option> }
+        </InputSelect>
+        <ValidationMessage For="() => model.PaqueteId" />
+      </div>
+      <div><label>Fecha</label><InputDate @bind-Value="model.FechaReserva" /></div>
+      <div>
+        <label>Estado</label>
+        <InputSelect @bind-Value="model.Estado">
+          <option>Pendiente</option><option>Confirmada</option><option>Cancelada</option><option>Completada</option>
+        </InputSelect>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit" disabled="@saving">@(editing ? "Actualizar" : "Guardar")</button>
+      <button class="btn secondary" type="button" @onclick="Reset">@(editing ? "Cancelar edición" : "Limpiar")</button>
+    </div>
+  </EditForm>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Cliente</th><th>Paquete</th><th>Fecha</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody>
+      @foreach (var item in items)
+      {
+        <tr>
+          <td>@item.ReservaId</td><td>@item.ClienteNombre</td><td>@item.PaqueteNombre</td><td>@item.FechaReserva.ToLocalTime().ToString("dd/MM/yyyy")</td>
+          <td><span class="status @item.Estado.ToLowerInvariant()">@item.Estado</span></td>
+          <td class="row-actions">
+            <button class="btn edit" @onclick="() => Edit(item)">Editar</button>
+            <button class="btn danger" @onclick="() => DeleteAsync(item)">Eliminar</button>
+          </td>
+        </tr>
+      }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+@code {
+  private List<ReservaDto> items = [];
+  private List<ClienteDto> clientes = [];
+  private List<PaqueteDto> paquetes = [];
+  private ReservaDto model = new();
+  private bool editing, saving;
+  private string message = "";
+
+  protected override async Task OnInitializedAsync()
+  {
+    clientes = await Api.GetClientesAsync() ?? [];
+    paquetes = await Api.GetPaquetesAsync() ?? [];
+    await LoadAsync();
+  }
+
+  private async Task LoadAsync() => items = await Api.GetReservasAsync() ?? [];
+
+  private async Task SaveAsync()
+  {
+    saving = true;
+    var response = editing ? await Api.UpdateReservaAsync(model) : await Api.CreateReservaAsync(model);
+    message = response.IsSuccessStatusCode ? (editing ? "Reserva actualizada." : "Reserva creada.")
+      : await ApiService.ErrorAsync(response, "No fue posible guardar.");
+    saving = false;
+    if (response.IsSuccessStatusCode) { Reset(); await LoadAsync(); }
+  }
+
+  private void Edit(ReservaDto x)
+  {
+    model = new() { ReservaId=x.ReservaId, ClienteId=x.ClienteId, PaqueteId=x.PaqueteId,
+      FechaReserva=x.FechaReserva.ToLocalTime(), Estado=x.Estado };
+    editing = true;
+  }
+
+  private async Task DeleteAsync(ReservaDto x)
+  {
+    if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar la reserva #{x.ReservaId}?")) return;
+    var response = await Api.DeleteReservaAsync(x.ReservaId);
+    message = response.IsSuccessStatusCode ? "Reserva eliminada." : await ApiService.ErrorAsync(response, "No fue posible eliminar.");
+    if (response.IsSuccessStatusCode) await LoadAsync();
+  }
+
+  private void Reset() { model = new(); editing = false; }
+}

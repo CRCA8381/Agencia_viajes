@@ -1,0 +1,82 @@
+@page "/clientes"
+@inject ApiService Api
+@inject IJSRuntime JS
+
+<PageTitle>Clientes</PageTitle>
+
+<section class="card">
+  <div class="section-header">
+    <div><h1>Clientes</h1><p>Administra los datos de los viajeros.</p></div>
+    <span class="badge">@items.Count registros</span>
+  </div>
+
+  @if (!string.IsNullOrWhiteSpace(message)) { <div class="message">@message</div> }
+
+  <EditForm Model="model" OnValidSubmit="SaveAsync" FormName="clienteForm">
+    <DataAnnotationsValidator />
+    <div class="form-grid">
+      <div><label>Nombre</label><InputText @bind-Value="model.Nombre" /><ValidationMessage For="() => model.Nombre" /></div>
+      <div><label>Documento</label><InputText @bind-Value="model.Documento" /><ValidationMessage For="() => model.Documento" /></div>
+      <div><label>Teléfono</label><InputText @bind-Value="model.Telefono" /><ValidationMessage For="() => model.Telefono" /></div>
+      <div><label>Correo</label><InputText @bind-Value="model.Email" /><ValidationMessage For="() => model.Email" /></div>
+    </div>
+    <div class="actions">
+      <button class="btn primary" type="submit" disabled="@saving">@(editing ? "Actualizar" : "Guardar")</button>
+      <button class="btn secondary" type="button" @onclick="Reset">@(editing ? "Cancelar edición" : "Limpiar")</button>
+    </div>
+  </EditForm>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>ID</th><th>Nombre</th><th>Documento</th><th>Teléfono</th><th>Correo</th><th>Acciones</th></tr></thead>
+      <tbody>
+      @foreach (var item in items)
+      {
+        <tr>
+          <td>@item.ClienteId</td><td>@item.Nombre</td><td>@item.Documento</td><td>@item.Telefono</td><td>@item.Email</td>
+          <td class="row-actions">
+            <button class="btn edit" @onclick="() => Edit(item)">Editar</button>
+            <button class="btn danger" @onclick="() => DeleteAsync(item)">Eliminar</button>
+          </td>
+        </tr>
+      }
+      </tbody>
+    </table>
+  </div>
+</section>
+
+@code {
+  private List<ClienteDto> items = [];
+  private ClienteDto model = new();
+  private bool editing, saving;
+  private string message = "";
+
+  protected override async Task OnInitializedAsync() => await LoadAsync();
+  private async Task LoadAsync() => items = await Api.GetClientesAsync() ?? [];
+
+  private async Task SaveAsync()
+  {
+    saving = true;
+    var response = editing ? await Api.UpdateClienteAsync(model) : await Api.CreateClienteAsync(model);
+    message = response.IsSuccessStatusCode ? (editing ? "Cliente actualizado." : "Cliente creado.")
+      : await ApiService.ErrorAsync(response, "No fue posible guardar.");
+    saving = false;
+    if (response.IsSuccessStatusCode) { Reset(); await LoadAsync(); }
+  }
+
+  private void Edit(ClienteDto x)
+  {
+    model = new() { ClienteId=x.ClienteId, Nombre=x.Nombre, Documento=x.Documento, Telefono=x.Telefono, Email=x.Email };
+    editing = true;
+  }
+
+  private async Task DeleteAsync(ClienteDto x)
+  {
+    if (!await JS.InvokeAsync<bool>("confirm", $"¿Eliminar a {x.Nombre}?")) return;
+    var response = await Api.DeleteClienteAsync(x.ClienteId);
+    message = response.IsSuccessStatusCode ? "Cliente eliminado." : await ApiService.ErrorAsync(response, "No fue posible eliminar.");
+    if (response.IsSuccessStatusCode) await LoadAsync();
+  }
+
+  private void Reset() { model = new(); editing = false; }
+}
